@@ -1,0 +1,11 @@
+{
+    "tasks": {
+        "dev": "deno run --allow-net --allow-read --allow-env --allow-sys --env --unstable-kv src/index.ts",
+        "start": "deno run --allow-net --allow-read --allow-env --allow-sys --env src/index.ts"
+    },
+    "imports": {
+        "@slack/bolt": "npm:@slack/bolt@^4.1.1",
+        "googleapis": "npm:googleapis@^171.1.0",
+        "dotenv": "npm:dotenv@^17.2.3"
+    }
+}
