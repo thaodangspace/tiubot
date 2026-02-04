@@ -61,6 +61,16 @@ app.message(async ({ message, say }: any) => {
   }
 });
 
+// Add a basic health check for Deno Deploy
+// This prevents the "Warm up (Failed)" error
+const port = Number(Deno.env.get("PORT") || "8000");
+try {
+  Deno.serve({ port }, () => new Response("OK"));
+} catch (e) {
+  const message = e instanceof Error ? e.message : String(e);
+  console.log(`[DEBUG] Deno.serve error: ${message}`);
+}
+
 (async () => {
   try {
     await app.start();
@@ -70,3 +80,4 @@ app.message(async ({ message, say }: any) => {
     Deno.exit(1);
   }
 })();
+
