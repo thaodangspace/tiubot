@@ -1,11 +1,22 @@
-import { google } from 'googleapis';
-import type { JWT } from 'npm:google-auth-library';
+import { JWT } from 'npm:google-auth-library';
 
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
+const SHEETS_API_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
+const SHEET_RANGE = "'1'!A:C";
+
+type SheetsValuesResponse = {
+  values?: string[][];
+};
+
+type CachedToken = {
+  value: string;
+  expiry: number;
+};
 
 export class GoogleSheetsService {
-  private jwtClient: any; // Using any for simplicity in Deno compat or import correctly if needed
+  private jwtClient: JWT;
   private spreadsheetId: string;
+  private tokenCache?: CachedToken;
 
   constructor() {
     const email = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_EMAIL');
@@ -16,8 +27,6 @@ export class GoogleSheetsService {
       throw new Error('Missing Google Sheets configuration in environment variables.');
     }
 
-    // @ts-ignore: Google Auth Library via npm specifier
-    const { JWT } = google.auth;
     this.jwtClient = new JWT({
       email,
       key: privateKey,
@@ -25,9 +34,61 @@ export class GoogleSheetsService {
     });
   }
 
-  private async getSheetsClient() {
-    await this.jwtClient.authorize();
-    return google.sheets({ version: 'v4', auth: this.jwtClient });
+  private async getAccessToken(): Promise<string> {
+    if (this.tokenCache && Date.now() < this.tokenCache.expiry - 30_000) {
+      return this.tokenCache.value;
+    }
+
+    const tokens = await this.jwtClient.authorize();
+    const accessToken = tokens?.access_token;
+
+    if (!accessToken) {
+      throw new Error('Failed to obtain Google access token.');
+    }
+
+    const expiry = tokens.expiry_date ?? Date.now() + 50 * 60 * 1000;
+    this.tokenCache = { value: accessToken, expiry };
+    return accessToken;
+  }
+
+  private async googleFetch<T>(path: string, init?: RequestInit): Promise<T> {
+    const token = await this.getAccessToken();
+    const headers = new Headers(init?.headers);
+    headers.set('Authorization', `Bearer ${token}`);
+
+    if (init?.body && !headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json');
+    }
+
+    const response = await fetch(
+      `${SHEETS_API_BASE}/${this.spreadsheetId}${path}`,
+      {
+        ...init,
+        headers,
+      },
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `Google Sheets API error (${response.status}): ${errorText}`,
+      );
+    }
+
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
+    const bodyText = await response.text();
+    return bodyText ? JSON.parse(bodyText) as T : ({} as T);
+  }
+
+  private async getCurrentValues(): Promise<string[][]> {
+    const encodedRange = encodeURIComponent(SHEET_RANGE);
+    const data = await this.googleFetch<SheetsValuesResponse>(
+      `/values/${encodedRange}`,
+    );
+    return data.values ?? [];
   }
 
   private getTodayString(): string {
@@ -43,16 +104,8 @@ export class GoogleSheetsService {
   }
 
   async addExpense(category: string, amount: number, note?: string) {
-    const sheets = await this.getSheetsClient();
     const todayStr = this.getTodayString();
-    
-    // Get current values to find the last date header
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: this.spreadsheetId,
-      range: "'1'!A:C", // Based on screenshot, tab name is '1' and we need Col C for notes
-    });
-
-    const values = response.data.values || [];
+    const values = await this.getCurrentValues();
     let lastDateHeader = '';
 
     // Search backwards for the last date header (DD/MM/YYYY pattern)
@@ -80,13 +133,13 @@ export class GoogleSheetsService {
     // Add the expense row
     rowsToAppend.push([category, this.formatCurrency(amount), note || '']);
 
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: this.spreadsheetId,
-      range: "'1'!A:C",
-      valueInputOption: 'RAW',
-      requestBody: {
-        values: rowsToAppend,
+    const encodedRange = encodeURIComponent(SHEET_RANGE);
+    await this.googleFetch(
+      `/values/${encodedRange}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ values: rowsToAppend }),
       },
-    });
+    );
   }
 }

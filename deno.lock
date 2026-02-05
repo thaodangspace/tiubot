@@ -3,8 +3,7 @@
   "specifiers": {
     "npm:@slack/bolt@^4.1.1": "4.6.0_@types+express@5.0.6",
     "npm:dotenv@^17.2.3": "17.2.3",
-    "npm:google-auth-library@*": "10.5.0",
-    "npm:googleapis@^171.1.0": "171.2.0"
+    "npm:google-auth-library@*": "10.5.0"
   },
   "npm": {
     "@isaacs/cliui@8.0.2": {
@@ -517,23 +516,6 @@
     "google-logging-utils@1.1.3": {
       "integrity": "sha512-eAmLkjDjAFCVXg7A1unxHsLf961m6y17QFqXqAXGj/gVkKFrEICfStRfwUlGNfeCEjNRa32JEWOUTlYXPyyKvA=="
     },
-    "googleapis-common@8.0.1": {
-      "integrity": "sha512-eCzNACUXPb1PW5l0ULTzMHaL/ltPRADoPgjBlT8jWsTbxkCp6siv+qKJ/1ldaybCthGwsYFYallF7u9AkU4L+A==",
-      "dependencies": [
-        "extend",
-        "gaxios",
-        "google-auth-library",
-        "qs",
-        "url-template"
-      ]
-    },
-    "googleapis@171.2.0": {
-      "integrity": "sha512-6VGd2GpMBKs/qEMRjPRMh/y55xM8mMRMBBWEEzNJRMRo4arYMem2w+Bncct1+Xl2xq6ftL75acWE3Qo52f1RHw==",
-      "dependencies": [
-        "google-auth-library",
-        "googleapis-common"
-      ]
-    },
     "gopd@1.2.0": {
       "integrity": "sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg=="
     },
@@ -1010,8 +992,7 @@
   "workspace": {
     "dependencies": [
       "npm:@slack/bolt@^4.1.1",
-      "npm:dotenv@^17.2.3",
-      "npm:googleapis@^171.1.0"
+      "npm:dotenv@^17.2.3"
     ]
   }
 }
