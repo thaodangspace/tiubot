@@ -1,27 +1,29 @@
-import { parseExpense } from './parser.ts';
-import { GoogleSheetsService } from './google-sheets.service.ts';
+import { parseExpense } from "./parser.ts";
+import { GoogleSheetsService } from "./google-sheets.service.ts";
+import { AiExpenseHelper } from "./openrouter.service.ts";
 
 // Environment validation
-const signingSecret = Deno.env.get('SLACK_SIGNING_SECRET');
-const botToken = Deno.env.get('SLACK_BOT_TOKEN');
+const signingSecret = Deno.env.get("SLACK_SIGNING_SECRET");
+const botToken = Deno.env.get("SLACK_BOT_TOKEN");
 
 if (!signingSecret || !botToken) {
-  console.error('Missing Slack configuration in environment variables.');
+  console.error("Missing Slack configuration in environment variables.");
   Deno.exit(1);
 }
 
 // Global error handlers for stability
-globalThis.addEventListener('unhandledrejection', (event) => {
-  console.error('[UNHANDLED REJECTION]', event.reason);
+globalThis.addEventListener("unhandledrejection", (event) => {
+  console.error("[UNHANDLED REJECTION]", event.reason);
   event.preventDefault();
 });
 
-globalThis.addEventListener('error', (event) => {
-  console.error('[GLOBAL ERROR]', event.error);
+globalThis.addEventListener("error", (event) => {
+  console.error("[GLOBAL ERROR]", event.error);
   event.preventDefault();
 });
 
 const sheetsService = new GoogleSheetsService();
+const aiHelper = new AiExpenseHelper();
 
 // ---------------------------------------------------------------------------
 // Slack request verification (HMAC SHA-256)
@@ -85,7 +87,7 @@ async function sendSlackMessage(
   if (!resp.ok) {
     throw new Error(`Slack API error: ${resp.status}`);
   }
-  
+
   const data = await resp.json();
   if (!data.ok) {
     throw new Error(`Slack API error: ${data.error}`);
@@ -98,7 +100,7 @@ async function sendSlackMessage(
 
 async function handleSlackEvent(event: any): Promise<void> {
   const { type, text, channel, ts, thread_ts, bot_id } = event;
-  
+
   // Ignore bot messages and non-message events
   if (type !== "message" || bot_id) return;
   if (!text) return;
@@ -106,29 +108,59 @@ async function handleSlackEvent(event: any): Promise<void> {
   console.log(`[DEBUG] Received message: "${text}"`);
 
   try {
-    const parsed = parseExpense(text);
+    let parsed = parseExpense(text);
+    let usedAi = false;
+
+    if (!parsed && aiHelper.isEnabled()) {
+      await sendSlackMessage(
+        channel,
+        "🤖 Để mình hỏi AI hiểu bạn đang nói gì nhé...",
+        thread_ts || ts,
+      );
+      parsed = await aiHelper.parseExpenseWithAi(text);
+      usedAi = Boolean(parsed);
+    }
 
     if (!parsed) {
       console.log(`[DEBUG] Message did not match expense pattern.`);
+      const reply =
+        (aiHelper.isEnabled() && await aiHelper.generateConfusedReply()) ||
+        '🤷 Không hiểu được chi tiêu này. Vui lòng nhập theo dạng "ăn tối 150k (ghi chú)".';
+      await sendSlackMessage(channel, reply, thread_ts || ts);
       return;
     }
 
-    const summary = `*${parsed.category}* - *${parsed.amount.toLocaleString('vi-VN')} ₫*${parsed.note ? ` (${parsed.note})` : ''}`;
-    
+    const summary = `*${parsed.category}* - *${
+      parsed.amount.toLocaleString("vi-VN")
+    } ₫*${parsed.note ? ` (${parsed.note})` : ""}`;
+
     // Send processing message
-    await sendSlackMessage(channel, `⏳ Đang nhập chi tiêu: ${summary}...`, thread_ts || ts);
-    
+    await sendSlackMessage(
+      channel,
+      `⏳ Đang nhập chi tiêu: ${summary}...`,
+      thread_ts || ts,
+    );
+
     // Add to Google Sheets
     await sheetsService.addExpense(parsed.category, parsed.amount, parsed.note);
-    
+
     // Send success message
-    await sendSlackMessage(channel, `✅ Đã nhập thành công vào Google Sheet!`, thread_ts || ts);
+    let successMessage = `✅ Đã nhập thành công vào Google Sheet!`;
+    if (aiHelper.isEnabled()) {
+      const aiMessage = await aiHelper.generatePlayfulSuccess(summary, usedAi);
+      if (aiMessage) successMessage = aiMessage;
+    }
+    await sendSlackMessage(channel, successMessage, thread_ts || ts);
   } catch (error: any) {
-    console.error('[ERROR] handleSlackEvent:', error);
+    console.error("[ERROR] handleSlackEvent:", error);
     try {
-      await sendSlackMessage(channel, `❌ Đã xảy ra lỗi: ${error.message}`, thread_ts || ts);
+      await sendSlackMessage(
+        channel,
+        `❌ Đã xảy ra lỗi: ${error.message}`,
+        thread_ts || ts,
+      );
     } catch (sayError) {
-      console.error('[ERROR] Failed to send error message:', sayError);
+      console.error("[ERROR] Failed to send error message:", sayError);
     }
   }
 }
@@ -156,7 +188,7 @@ async function handler(req: Request): Promise<Response> {
   const signature = req.headers.get("x-slack-signature");
 
   if (!(await verifySlackRequest(body, signature, timestamp))) {
-    console.error('[ERROR] Slack request verification failed');
+    console.error("[ERROR] Slack request verification failed");
     return new Response("Unauthorized", { status: 401 });
   }
 
