@@ -2,7 +2,6 @@ import { JWT } from 'npm:google-auth-library';
 
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 const SHEETS_API_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
-const SHEET_RANGE = "'1'!A:D";
 
 type SheetsValuesResponse = {
   values?: string[][];
@@ -51,6 +50,25 @@ export class GoogleSheetsService {
     return accessToken;
   }
 
+  private columnIndexToLetter(index: number): string {
+    let result = '';
+    let i = index;
+    while (i >= 0) {
+      result = String.fromCharCode((i % 26) + 65) + result;
+      i = Math.floor(i / 26) - 1;
+    }
+    return result;
+  }
+
+  private getMonthRange(): string {
+    const month = new Date().getMonth(); // 0-based
+    const startIndex = month * 5;
+    const endIndex = startIndex + 3;
+    const startLetter = this.columnIndexToLetter(startIndex);
+    const endLetter = this.columnIndexToLetter(endIndex);
+    return `'1'!${startLetter}:${endLetter}`;
+  }
+
   private async googleFetch<T>(path: string, init?: RequestInit): Promise<T> {
     const token = await this.getAccessToken();
     const headers = new Headers(init?.headers);
@@ -84,7 +102,7 @@ export class GoogleSheetsService {
   }
 
   private async getCurrentValues(): Promise<string[][]> {
-    const encodedRange = encodeURIComponent(SHEET_RANGE);
+    const encodedRange = encodeURIComponent(this.getMonthRange());
     const data = await this.googleFetch<SheetsValuesResponse>(
       `/values/${encodedRange}`,
     );
@@ -97,10 +115,6 @@ export class GoogleSheetsService {
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const year = now.getFullYear();
     return `${day}/${month}/${year}`;
-  }
-
-  private formatCurrency(amount: number): string {
-    return amount.toLocaleString('vi-VN').replace(/,/g, '.') + ' ₫';
   }
 
   async addExpense(category: string, amount: number, type: 'expense' | 'income', note?: string) {
@@ -119,7 +133,7 @@ export class GoogleSheetsService {
       }
     }
 
-    const rowsToAppend: string[][] = [];
+    const rowsToAppend: (string | number)[][] = [];
 
     // If no date header or last date header is not today, add a header row
     if (lastDateHeader !== todayStr) {
@@ -131,13 +145,12 @@ export class GoogleSheetsService {
     }
 
     // Add the expense/income row
-    const formattedAmount = this.formatCurrency(amount);
     const row = type === 'expense'
-      ? [category, formattedAmount, '', note || '']
-      : [category, '', formattedAmount, note || ''];
+      ? [category, amount, '', note || '']
+      : [category, '', amount, note || ''];
     rowsToAppend.push(row);
 
-    const encodedRange = encodeURIComponent(SHEET_RANGE);
+    const encodedRange = encodeURIComponent(this.getMonthRange());
     await this.googleFetch(
       `/values/${encodedRange}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
       {
