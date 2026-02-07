@@ -2,7 +2,7 @@ import { JWT } from 'npm:google-auth-library';
 
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 const SHEETS_API_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
-const SHEET_RANGE = "'1'!A:C";
+const SHEET_RANGE = "'1'!A:D";
 
 type SheetsValuesResponse = {
   values?: string[][];
@@ -103,7 +103,7 @@ export class GoogleSheetsService {
     return amount.toLocaleString('vi-VN').replace(/,/g, '.') + ' ₫';
   }
 
-  async addExpense(category: string, amount: number, note?: string) {
+  async addExpense(category: string, amount: number, type: 'expense' | 'income', note?: string) {
     const todayStr = this.getTodayString();
     const values = await this.getCurrentValues();
     let lastDateHeader = '';
@@ -125,13 +125,17 @@ export class GoogleSheetsService {
     if (lastDateHeader !== todayStr) {
       if (values.length > 0) {
         // Add an empty row for spacing before the new date header if there's existing data
-        rowsToAppend.push(['', '', '']);
+        rowsToAppend.push(['', '', '', '']);
       }
-      rowsToAppend.push([todayStr, '', '']);
+      rowsToAppend.push([todayStr, '', '', '']);
     }
 
-    // Add the expense row
-    rowsToAppend.push([category, this.formatCurrency(amount), note || '']);
+    // Add the expense/income row
+    const formattedAmount = this.formatCurrency(amount);
+    const row = type === 'expense'
+      ? [category, formattedAmount, '', note || '']
+      : [category, '', formattedAmount, note || ''];
+    rowsToAppend.push(row);
 
     const encodedRange = encodeURIComponent(SHEET_RANGE);
     await this.googleFetch(

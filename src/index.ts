@@ -134,15 +134,17 @@ async function handleSlackEvent(event: any): Promise<void> {
       parsed.amount.toLocaleString("vi-VN")
     } ₫*${parsed.note ? ` (${parsed.note})` : ""}`;
 
+    const typeLabel = parsed.type === 'income' ? 'thu nhập' : 'chi tiêu';
+
     // Send processing message
     await sendSlackMessage(
       channel,
-      `⏳ Đang nhập chi tiêu: ${summary}...`,
+      `⏳ Đang nhập ${typeLabel}: ${summary}...`,
       thread_ts || ts,
     );
 
     // Add to Google Sheets
-    await sheetsService.addExpense(parsed.category, parsed.amount, parsed.note);
+    await sheetsService.addExpense(parsed.category, parsed.amount, parsed.type, parsed.note);
 
     // Send success message
     let successMessage = `✅ Đã nhập thành công vào Google Sheet!`;

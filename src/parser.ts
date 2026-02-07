@@ -2,6 +2,7 @@ export interface ParsedExpense {
   category: string;
   amount: number;
   note?: string;
+  type: 'expense' | 'income';
 }
 
 /**
@@ -12,10 +13,20 @@ export interface ParsedExpense {
  * - tr, TR, m, M: 1,000,000
  */
 export function parseExpense(input: string): ParsedExpense | null {
+  const trimmed = input.trim();
+
+  // Detect income: starts with "thu" or "nhận"
+  const isIncome = /^(thu|nhận)\s/i.test(trimmed);
+
+  // If income, remove prefix before parsing
+  const textToParse = isIncome
+    ? trimmed.replace(/^(thu|nhận)\s+/i, '')
+    : trimmed;
+
   // Regex to match: [category] [number][optional suffix] [optional note]
   // Suffixes: k (thousand), tr/m (million)
   const regex = /^(.+?)\s+([\d,.]+)\s*(k|tr|m|đ|d)?(?:\s+(.*))?$/i;
-  const match = input.trim().match(regex);
+  const match = textToParse.match(regex);
 
   if (!match || !match[1] || !match[2]) return null;
 
@@ -53,6 +64,7 @@ export function parseExpense(input: string): ParsedExpense | null {
   return {
     category: category.charAt(0).toUpperCase() + category.slice(1),
     amount,
-    note
+    note,
+    type: isIncome ? 'income' : 'expense'
   };
 }
