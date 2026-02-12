@@ -1,6 +1,7 @@
 import type { ParsedExpense, MonthlySummary } from "./parser.ts";
+import { ZaiService } from "./zai.service.ts";
 
-type ChatMessage = {
+export type ChatMessage = {
   role: "system" | "user" | "assistant";
   content: string;
 };
@@ -73,10 +74,41 @@ export class OpenRouterService {
 }
 
 export class AiExpenseHelper {
-  private client = new OpenRouterService();
+  private client: OpenRouterService | ZaiService;
+  private providerName: string;
+
+  constructor(provider?: string) {
+    this.providerName = provider || Deno.env.get("AI_PROVIDER") || "openrouter";
+
+    // Factory pattern: instantiate the appropriate service based on provider
+    if (this.providerName === "zai") {
+      this.client = new ZaiService();
+      console.log("[AiExpenseHelper] Using Z.ai provider");
+    } else {
+      this.client = new OpenRouterService();
+      console.log("[AiExpenseHelper] Using OpenRouter provider");
+    }
+
+    // Fallback to the first available provider if specified one is not enabled
+    if (!this.client.isEnabled()) {
+      const fallbackService = this.providerName === "zai"
+        ? new OpenRouterService()
+        : new ZaiService();
+
+      if (fallbackService.isEnabled()) {
+        this.client = fallbackService;
+        this.providerName = fallbackService instanceof ZaiService ? "zai" : "openrouter";
+        console.log(`[AiExpenseHelper] Falling back to ${this.providerName} provider`);
+      }
+    }
+  }
 
   isEnabled(): boolean {
     return this.client.isEnabled();
+  }
+
+  getProviderName(): string {
+    return this.providerName;
   }
 
   async parseExpenseWithAi(message: string): Promise<ParsedExpense | null> {
@@ -116,7 +148,7 @@ export class AiExpenseHelper {
         type: 'expense',
       };
     } catch (err) {
-      console.error("[OpenRouter] Failed to parse AI JSON", err);
+      console.error(`[${this.providerName}] Failed to parse AI JSON`, err);
       return null;
     }
   }
