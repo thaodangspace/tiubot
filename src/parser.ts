@@ -21,6 +21,7 @@ export function detectMonthlySummaryIntent(input: string): boolean {
     /xem\s*chi\s*thang\s*nay/,
     /thong\s*ke\s*thang\s*nay/,
     /bao\s*cao\s*thang\s*nay/,
+    /bao\s*cao\s*chi\s*tie*u/,
   ];
   return summaryPatterns.some(pattern => pattern.test(trimmed));
 }

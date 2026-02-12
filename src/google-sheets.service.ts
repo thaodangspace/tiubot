@@ -161,6 +161,13 @@ export class GoogleSheetsService {
     );
   }
 
+  private parseAmount(str: string): number {
+    if (!str) return 0;
+    const clean = str.replace(/\s*₫\s*/, '').trim();
+    const normalized = clean.includes('.') ? clean.replace(/\./g, '') : clean;
+    return parseFloat(normalized.replace(/,/g, '')) || 0;
+  }
+
   async getMonthlySummary(): Promise<MonthlySummary> {
     const monthRange = this.getMonthRange();
     const encodedRange = encodeURIComponent(monthRange);
@@ -184,8 +191,8 @@ export class GoogleSheetsService {
       if (!row[0] && !row[1] && !row[2]) continue;
 
       const category = row[0]?.trim() || 'Uncategorized';
-      const expenseAmount = parseFloat(row[1]) || 0;
-      const incomeAmount = parseFloat(row[2]) || 0;
+      const expenseAmount = this.parseAmount(row[1]);
+      const incomeAmount = this.parseAmount(row[2]);
 
       if (expenseAmount > 0) {
         totalExpenses += expenseAmount;
