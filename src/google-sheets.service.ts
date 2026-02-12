@@ -182,7 +182,7 @@ export class GoogleSheetsService {
     let entryCount = 0;
 
     for (const row of values) {
-      if (!row || row.length < 3) continue;
+      if (!row || row.length < 2) continue;
 
       // Skip date header rows (DD/MM/YYYY pattern)
       if (/^\d{2}\/\d{2}\/\d{4}$/.test(row[0] || '')) continue;
