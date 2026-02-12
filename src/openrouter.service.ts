@@ -1,4 +1,4 @@
-import type { ParsedExpense } from "./parser.ts";
+import type { ParsedExpense, MonthlySummary } from "./parser.ts";
 
 type ChatMessage = {
   role: "system" | "user" | "assistant";
@@ -113,6 +113,7 @@ export class AiExpenseHelper {
         category: String(parsed.category),
         amount: parsed.amount,
         note: parsed.note ? String(parsed.note) : undefined,
+        type: 'expense',
       };
     } catch (err) {
       console.error("[OpenRouter] Failed to parse AI JSON", err);
@@ -156,6 +157,38 @@ export class AiExpenseHelper {
         role: "user",
         content:
           'Tin nhắn không thể phân tích được. Hãy nhắc người dùng nhập theo dạng "[hạng mục] [số tiền] [ghi chú]" bằng tiếng Việt.',
+      },
+    ], 0.5);
+  }
+
+  async generateSummaryMessage(
+    summary: MonthlySummary,
+    monthName: string,
+  ): Promise<string | null> {
+    if (!this.isEnabled()) return null;
+
+    const categoryBreakdown = summary.expensesByCategory
+      .slice(0, 5)
+      .map(c => `${c.category}: ${c.amount.toLocaleString('vi-VN')} ₫`)
+      .join('\n• ');
+
+    return await this.client.chat([
+      {
+        role: "system",
+        content:
+          "Bạn là bot tài chính vui vẻ trong Slack. " +
+          "Gửi báo cáo chi tiêu tháng bằng tiếng Việt. " +
+          "Giữ câu trả lời dưới 100 từ, thêm emoji phù hợp. " +
+          "Hiển thị tổng chi tiêu, thu nhập, và cân bằng.",
+      },
+      {
+        role: "user",
+        content: `Tháng ${monthName}: ` +
+          `Tổng chi tiêu: ${summary.totalExpenses.toLocaleString('vi-VN')} ₫, ` +
+          `Tổng thu nhập: ${summary.totalIncome.toLocaleString('vi-VN')} ₫, ` +
+          `Cân bằng: ${summary.balance.toLocaleString('vi-VN')} ₫, ` +
+          `Số giao dịch: ${summary.entryCount}. ` +
+          `Chi tiết danh mục chi tiêu:\n• ${categoryBreakdown}`,
       },
     ], 0.5);
   }

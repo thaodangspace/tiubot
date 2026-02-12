@@ -1,4 +1,4 @@
-import { parseExpense } from "./parser.ts";
+import { parseExpense, detectMonthlySummaryIntent, formatMonthlySummary } from "./parser.ts";
 import { GoogleSheetsService } from "./google-sheets.service.ts";
 import { AiExpenseHelper } from "./openrouter.service.ts";
 
@@ -98,6 +98,15 @@ async function sendSlackMessage(
 // Event handler for messages
 // ---------------------------------------------------------------------------
 
+function getCurrentVietnameseMonthName(): string {
+  const months = [
+    'tháng một', 'tháng hai', 'tháng ba', 'tháng tư',
+    'tháng năm', 'tháng sáu', 'tháng bảy', 'tháng tám',
+    'tháng chín', 'tháng mười', 'tháng mười một', 'tháng mười hai'
+  ];
+  return months[new Date().getMonth()];
+}
+
 async function handleSlackEvent(event: any): Promise<void> {
   const { type, text, channel, ts, thread_ts, bot_id } = event;
 
@@ -108,6 +117,29 @@ async function handleSlackEvent(event: any): Promise<void> {
   console.log(`[DEBUG] Received message: "${text}"`);
 
   try {
+    // NEW: Check for monthly summary intent
+    if (detectMonthlySummaryIntent(text)) {
+      await sendSlackMessage(
+        channel,
+        "🔄 Đang tính toán chi tiêu tháng này...",
+        thread_ts || ts,
+      );
+
+      const summary = await sheetsService.getMonthlySummary();
+      const monthName = getCurrentVietnameseMonthName();
+
+      let summaryMessage: string;
+      if (aiHelper.isEnabled()) {
+        const aiMessage = await aiHelper.generateSummaryMessage(summary, monthName);
+        summaryMessage = aiMessage || formatMonthlySummary(summary, monthName);
+      } else {
+        summaryMessage = formatMonthlySummary(summary, monthName);
+      }
+
+      await sendSlackMessage(channel, summaryMessage, thread_ts || ts);
+      return;
+    }
+
     let parsed = parseExpense(text);
     let usedAi = false;
 

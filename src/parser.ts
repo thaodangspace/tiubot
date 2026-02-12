@@ -5,6 +5,57 @@ export interface ParsedExpense {
   type: 'expense' | 'income';
 }
 
+export interface MonthlySummary {
+  totalExpenses: number;
+  totalIncome: number;
+  balance: number;
+  expensesByCategory: { category: string; amount: number }[];
+  entryCount: number;
+}
+
+export function detectMonthlySummaryIntent(input: string): boolean {
+  const trimmed = input.trim().toLowerCase();
+  const summaryPatterns = [
+    /chi\s*tie*u\s*thang\s*nay/,
+    /tong\s*chi\s*thang\s*nay/,
+    /xem\s*chi\s*thang\s*nay/,
+    /thong\s*ke\s*thang\s*nay/,
+    /bao\s*cao\s*thang\s*nay/,
+  ];
+  return summaryPatterns.some(pattern => pattern.test(trimmed));
+}
+
+export function formatMonthlySummary(summary: MonthlySummary, monthName: string): string {
+  const lines: string[] = [];
+
+  lines.push(`📊 Báo cáo ${monthName}:`);
+  lines.push('');
+
+  if (summary.entryCount === 0) {
+    lines.push('📭 Chưa có dữ liệu chi tiêu cho tháng này.');
+    return lines.join('\n');
+  }
+
+  lines.push(`💸 Tổng chi tiêu: ${summary.totalExpenses.toLocaleString('vi-VN')} ₫`);
+
+  if (summary.totalIncome > 0) {
+    lines.push(`💰 Tổng thu nhập: ${summary.totalIncome.toLocaleString('vi-VN')} ₫`);
+    lines.push(`⚖️ Cân bằng: ${summary.balance.toLocaleString('vi-VN')} ₫`);
+  }
+
+  lines.push(`📝 Số giao dịch: ${summary.entryCount}`);
+
+  if (summary.expensesByCategory.length > 0) {
+    lines.push('');
+    lines.push(`📈 Chi tiêu theo danh mục:`);
+    summary.expensesByCategory.slice(0, 5).forEach((item, index) => {
+      lines.push(`${index + 1}. ${item.category}: ${item.amount.toLocaleString('vi-VN')} ₫`);
+    });
+  }
+
+  return lines.join('\n');
+}
+
 /**
  * Parses a string like "ăn tối 157k" or "mua sắm 200000" into a category and amount.
  *

@@ -1,4 +1,5 @@
 import { JWT } from 'npm:google-auth-library';
+import { MonthlySummary } from "./parser.ts";
 
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 const SHEETS_API_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
@@ -158,5 +159,57 @@ export class GoogleSheetsService {
         body: JSON.stringify({ values: rowsToAppend }),
       },
     );
+  }
+
+  async getMonthlySummary(): Promise<MonthlySummary> {
+    const monthRange = this.getMonthRange();
+    const encodedRange = encodeURIComponent(monthRange);
+    const data = await this.googleFetch<SheetsValuesResponse>(
+      `/values/${encodedRange}`,
+    );
+    const values = data.values ?? [];
+
+    const expensesByCategory = new Map<string, number>();
+    let totalExpenses = 0;
+    let totalIncome = 0;
+    let entryCount = 0;
+
+    for (const row of values) {
+      if (!row || row.length < 3) continue;
+
+      // Skip date header rows (DD/MM/YYYY pattern)
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(row[0] || '')) continue;
+
+      // Skip empty rows
+      if (!row[0] && !row[1] && !row[2]) continue;
+
+      const category = row[0]?.trim() || 'Uncategorized';
+      const expenseAmount = parseFloat(row[1]) || 0;
+      const incomeAmount = parseFloat(row[2]) || 0;
+
+      if (expenseAmount > 0) {
+        totalExpenses += expenseAmount;
+        const current = expensesByCategory.get(category) || 0;
+        expensesByCategory.set(category, current + expenseAmount);
+      }
+
+      if (incomeAmount > 0) {
+        totalIncome += incomeAmount;
+      }
+
+      entryCount++;
+    }
+
+    const sortedExpensesByCategory = Array.from(expensesByCategory.entries())
+      .map(([category, amount]) => ({ category, amount }))
+      .sort((a, b) => b.amount - a.amount);
+
+    return {
+      totalExpenses,
+      totalIncome,
+      balance: totalIncome - totalExpenses,
+      expensesByCategory: sortedExpensesByCategory,
+      entryCount,
+    };
   }
 }
