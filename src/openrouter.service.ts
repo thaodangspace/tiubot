@@ -175,6 +175,28 @@ export class AiExpenseHelper {
     ], 0.6);
   }
 
+  async generateClarification(message: string): Promise<string | null> {
+    if (!this.isEnabled()) return null;
+
+    return await this.client.chat([
+      {
+        role: "system",
+        content:
+          "Bạn là bot ghi chép chi tiêu vui vẻ trong Slack. " +
+          "Hãy giải thích thân thiện tại sao tin nhắn người dùng không được hiểu. " +
+          "Cung cấp 2-3 ví dụ về định dạng đúng bằng tiếng Việt. " +
+          "Giữ câu trả lời dưới 50 từ, thêm emoji phù hợp.",
+      },
+      {
+        role: "user",
+        content: `Tin nhắn người dùng: "${message}"\n` +
+          'Định dạng đúng là "[hạng mục] [số tiền] [ghi chú]".\n' +
+          'Ví dụ: "Ăn tối 150k", "Mua sắm 2tr (quần áo)", hoặc "Thu lương 15tr".\n' +
+          'Hãy giải thích thân thiện và đưa ra ví dụ.',
+      },
+    ], 0.6);
+  }
+
   async generateConfusedReply(): Promise<string | null> {
     if (!this.isEnabled()) return null;
 

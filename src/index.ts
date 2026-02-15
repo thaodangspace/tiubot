@@ -155,9 +155,14 @@ async function handleSlackEvent(event: any): Promise<void> {
 
     if (!parsed) {
       console.log(`[DEBUG] Message did not match expense pattern.`);
-      const reply =
-        (aiHelper.isEnabled() && await aiHelper.generateConfusedReply()) ||
-        '🤷 Không hiểu được chi tiêu này. Vui lòng nhập theo dạng "ăn tối 150k (ghi chú)".';
+      let reply: string;
+      if (aiHelper.isEnabled()) {
+        reply = await aiHelper.generateClarification(text) ||
+                await aiHelper.generateConfusedReply() ||
+                '🤷 Không hiểu được chi tiêu này.';
+      } else {
+        reply = '🤷 Không hiểu được chi tiêu này. Vui lòng nhập theo dạng "ăn tối 150k (ghi chú)".';
+      }
       await sendSlackMessage(channel, reply, thread_ts || ts);
       return;
     }
