@@ -8,6 +8,28 @@ type SheetsValuesResponse = {
   values?: string[][];
 };
 
+type SheetProperties = {
+  sheetId: number;
+  title: string;
+  index: number;
+};
+
+type SpreadsheetMetadata = {
+  sheets: Array<{
+    properties: SheetProperties;
+  }>;
+};
+
+type BatchUpdateRequest = {
+  requests: Array<{
+    addSheet: {
+      properties: {
+        title: string;
+      };
+    };
+  }>;
+};
+
 type CachedToken = {
   value: string;
   expiry: number;
@@ -51,23 +73,65 @@ export class GoogleSheetsService {
     return accessToken;
   }
 
-  private columnIndexToLetter(index: number): string {
-    let result = '';
-    let i = index;
-    while (i >= 0) {
-      result = String.fromCharCode((i % 26) + 65) + result;
-      i = Math.floor(i / 26) - 1;
+  private getSheetNumber(): number {
+    const month = new Date().getMonth(); // 0-11
+    return month + 1; // Convert to 1-12
+  }
+
+  private async getSpreadsheetMetadata(): Promise<SpreadsheetMetadata> {
+    return await this.googleFetch<SpreadsheetMetadata>(
+      '?includeGridData=false',
+    );
+  }
+
+  private async sheetExists(sheetNumber: number): Promise<boolean> {
+    const metadata = await this.getSpreadsheetMetadata();
+    const sheetTitle = String(sheetNumber);
+    return metadata.sheets.some(
+      (sheet) => sheet.properties.title === sheetTitle,
+    );
+  }
+
+  private async createSheet(sheetNumber: number): Promise<void> {
+    const request: BatchUpdateRequest = {
+      requests: [
+        {
+          addSheet: {
+            properties: {
+              title: String(sheetNumber),
+            },
+          },
+        },
+      ],
+    };
+
+    await this.googleFetch('/batchUpdate', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+
+    // Add column headers in Vietnamese
+    const range = `${sheetNumber}!A1:D1`;
+    const headers = [['Danh mục', 'Chi tiêu', 'Thu nhập', 'Ghi chú']];
+    await this.googleFetch(
+      `/values/${range}?valueInputOption=RAW`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ values: headers }),
+      },
+    );
+  }
+
+  private async ensureSheetExists(sheetNumber: number): Promise<void> {
+    const exists = await this.sheetExists(sheetNumber);
+    if (!exists) {
+      await this.createSheet(sheetNumber);
     }
-    return result;
   }
 
   private getMonthRange(): string {
-    const month = new Date().getMonth(); // 0-based
-    const startIndex = month * 5;
-    const endIndex = startIndex + 3;
-    const startLetter = this.columnIndexToLetter(startIndex);
-    const endLetter = this.columnIndexToLetter(endIndex);
-    return `'1'!${startLetter}:${endLetter}`;
+    const sheetNumber = this.getSheetNumber();
+    return `${sheetNumber}!A:D`;
   }
 
   private async googleFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -103,7 +167,11 @@ export class GoogleSheetsService {
   }
 
   private async getCurrentValues(): Promise<string[][]> {
-    const encodedRange = encodeURIComponent(this.getMonthRange());
+    const sheetNumber = this.getSheetNumber();
+    await this.ensureSheetExists(sheetNumber);
+
+    const range = `${sheetNumber}!A2:D`; // Start from row 2 to skip header
+    const encodedRange = encodeURIComponent(range);
     const data = await this.googleFetch<SheetsValuesResponse>(
       `/values/${encodedRange}`,
     );
@@ -169,7 +237,21 @@ export class GoogleSheetsService {
   }
 
   async getMonthlySummary(): Promise<MonthlySummary> {
-    const monthRange = this.getMonthRange();
+    const sheetNumber = this.getSheetNumber();
+
+    // Check if sheet exists, return empty summary if not
+    const exists = await this.sheetExists(sheetNumber);
+    if (!exists) {
+      return {
+        totalExpenses: 0,
+        totalIncome: 0,
+        balance: 0,
+        expensesByCategory: [],
+        entryCount: 0,
+      };
+    }
+
+    const monthRange = `${sheetNumber}!A2:D`; // Start from row 2 to skip header
     const encodedRange = encodeURIComponent(monthRange);
     const data = await this.googleFetch<SheetsValuesResponse>(
       `/values/${encodedRange}`,
